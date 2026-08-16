@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read and plot two voltage channels from Arduino/Wokwi."""
+"""Read and visualize two voltage channels from Arduino/Wokwi."""
 
 from __future__ import annotations
 
@@ -16,28 +16,37 @@ import time
 from typing import Iterable, Iterator, TextIO
 
 
+# Represents one pair of measured voltages and the time it was received.
 @dataclass(frozen=True, slots=True)
 class VoltageSample:
-    """One received pair of voltage measurements."""
+    """Store one received pair of voltage measurements."""
 
+    # Elapsed time since the measurement started, in seconds.
     elapsed_s: float
+    # Voltage measured on the first channel, A0.
     u1_v: float
+    # Voltage measured on the second channel, A1.
     u2_v: float
 
 
+# Safely transfers an error from the worker thread to the main thread.
 @dataclass(frozen=True, slots=True)
 class SourceFailure:
-    """Transfers a source exception from the worker to the main thread."""
+    """Carry a source error between the program threads."""
 
+    # Original exception that must be reported to the user.
     error: Exception
 
 
+# Unique sentinel object that marks the end of the measurement stream.
 END_OF_SOURCE = object()
+# Type of the objects that may pass through the thread-safe queue.
 QueueItem = VoltageSample | SourceFailure | object
 
 
+# Convert one CSV line into a validated VoltageSample object.
 def parse_voltage_line(line: str, elapsed_s: float = 0.0) -> VoltageSample | None:
-    """Parse ``U1,U2`` in volts; ignore blank lines and comments."""
+    """Parse ``U1,U2`` in volts and ignore blank lines and comments."""
 
     stripped = line.strip()
     if not stripped or stripped.startswith("#"):
@@ -58,10 +67,11 @@ def parse_voltage_line(line: str, elapsed_s: float = 0.0) -> VoltageSample | Non
     return VoltageSample(elapsed_s=elapsed_s, u1_v=u1_v, u2_v=u2_v)
 
 
+# Read a continuous stream from a physical or Wokwi RFC2217 serial port.
 def serial_samples(
     url: str, baudrate: int, stop_event: Event
 ) -> Iterator[VoltageSample]:
-    """Yield voltage pairs from a physical or RFC2217 serial port."""
+    """Yield valid voltage pairs from the serial port as they arrive."""
 
     try:
         import serial
@@ -94,8 +104,9 @@ def serial_samples(
                 yield sample
 
 
+# Generate predictable test signals for checks without Arduino or Wokwi.
 def demo_samples(stop_event: Event, rate_hz: float = 10.0) -> Iterator[VoltageSample]:
-    """Generate deterministic test voltages without Arduino or Wokwi."""
+    """Create two sinusoidal test voltages at the selected sample rate."""
 
     started_at = time.monotonic()
     interval_s = 1.0 / rate_hz
@@ -117,14 +128,17 @@ def demo_samples(stop_event: Event, rate_hz: float = 10.0) -> Iterator[VoltageSa
         next_sample_at += interval_s
 
 
+# Optionally record every measurement in a CSV file.
 class CsvLogger:
-    """Optional on-disk log of all displayed samples."""
+    """Manage opening, writing, and closing the CSV file."""
 
+    # Store the path and initialize empty references for the file and CSV writer.
     def __init__(self, path: Path | None) -> None:
         self._path = path
         self._file: TextIO | None = None
         self._writer: csv.writer | None = None
 
+    # Open the CSV file and write its header when entering a with block.
     def __enter__(self) -> CsvLogger:
         if self._path is not None:
             self._file = self._path.open("w", encoding="utf-8", newline="")
@@ -132,6 +146,7 @@ class CsvLogger:
             self._writer.writerow(("elapsed_s", "u1_v", "u2_v"))
         return self
 
+    # Append one measurement and flush it to disk immediately.
     def write(self, sample: VoltageSample) -> None:
         if self._writer is None or self._file is None:
             return
@@ -140,31 +155,34 @@ class CsvLogger:
         )
         self._file.flush()
 
+    # Close the file when leaving the with block, including after an error.
     def __exit__(self, *_: object) -> None:
         if self._file is not None:
             self._file.close()
 
 
+# Transfer samples from a blocking source into a thread-safe queue.
 def pump_samples(
     source: Iterable[VoltageSample], inbox: Queue[QueueItem], stop_event: Event
 ) -> None:
-    """Read a potentially blocking source without freezing the plot window."""
+    """Read the source in a worker thread without freezing the plot window."""
 
     try:
         for sample in source:
             if stop_event.is_set():
                 break
             inbox.put(sample)
-    except Exception as exc:  # The main thread reports connection/dependency errors.
+    except Exception as exc:  # The main thread reports connection errors.
         inbox.put(SourceFailure(exc))
     finally:
         inbox.put(END_OF_SOURCE)
 
 
+# Consume queue items and display measurements in the terminal only.
 def run_console(
     inbox: Queue[QueueItem], logger: CsvLogger, stop_event: Event
 ) -> Exception | None:
-    """Print samples until interrupted or the source stops."""
+    """Print samples until stopped and return a source error if one occurs."""
 
     while not stop_event.is_set():
         item = inbox.get()
@@ -178,13 +196,14 @@ def run_console(
     return None
 
 
+# Create and manage a two-channel plot with a moving time window.
 def run_plot(
     inbox: Queue[QueueItem],
     logger: CsvLogger,
     stop_event: Event,
     window_s: float,
 ) -> Exception | None:
-    """Display a scrolling plot and return a source error, if one occurred."""
+    """Visualize measurements and return a source error if one occurs."""
 
     try:
         import matplotlib.pyplot as plt
@@ -214,6 +233,7 @@ def run_plot(
     axis.legend(loc="upper right")
     figure.tight_layout()
 
+    # Update the plot lines and current values on every animation frame.
     def update(_: int) -> tuple[object, object, object]:
         while True:
             try:
@@ -253,7 +273,7 @@ def run_plot(
 
         return line_u1, line_u2, latest_text
 
-    # Keep a live reference: matplotlib otherwise may garbage-collect the animation.
+    # Keep a live reference so the garbage collector does not delete the animation.
     animation = FuncAnimation(
         figure, update, interval=50, blit=False, cache_frame_data=False
     )
@@ -263,7 +283,10 @@ def run_plot(
     return source_error[0] if source_error else None
 
 
+# Define all command-line arguments accepted by the program.
 def build_argument_parser() -> argparse.ArgumentParser:
+    """Configure serial, plotting, CSV logging, and demo-mode options."""
+
     parser = argparse.ArgumentParser(
         description="Чете U1,U2 от Arduino/Wokwi и ги визуализира."
     )
@@ -293,7 +316,10 @@ def build_argument_parser() -> argparse.ArgumentParser:
     return parser
 
 
+# Connect the selected source, worker thread, and output mode.
 def main(argv: list[str] | None = None) -> int:
+    """Validate settings, run measurement, and return a process exit code."""
+
     args = build_argument_parser().parse_args(argv)
     if args.window <= 0:
         print("Грешка: --window трябва да бъде положително число.", file=sys.stderr)
@@ -343,6 +369,6 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+# Run main() only when this file is executed directly, not when it is imported.
 if __name__ == "__main__":
     raise SystemExit(main())
-
