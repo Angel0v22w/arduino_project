@@ -50,6 +50,13 @@ python -m pip install -r requirements.txt
 code .
 ```
 
+`requirements.txt` инсталира всички Python зависимости:
+
+- `pyserial` за физически и RFC2217 серийни връзки;
+- `matplotlib` за визуализацията;
+- `PyQt6` за интерактивния графичен backend `QtAgg`;
+- `platformio` за компилиране на Arduino firmware-а.
+
 След клониране не е необходимо да се търсят или изтеглят игнорираните файлове:
 
 - `.venv/` се създава с командата `python -m venv`;
@@ -70,17 +77,58 @@ code .
 python read_voltage.py --demo
 ```
 
+Програмата избира автоматично `QtAgg` и трябва да отвори интерактивен прозорец
+с две тестови криви. Тази проверка не изисква Arduino, Wokwi или сериен порт.
 Затвори прозореца на графиката или натисни `Ctrl+C`, за да спреш програмата.
+
+Ако е зададена променливата `MPLBACKEND=Agg`, Matplotlib няма да може да отвори
+прозорец. Премахни настройката и стартирай теста отново:
+
+Linux/macOS:
+
+```bash
+unset MPLBACKEND
+python read_voltage.py --demo
+```
+
+Windows PowerShell:
+
+```powershell
+Remove-Item Env:MPLBACKEND -ErrorAction SilentlyContinue
+python read_voltage.py --demo
+```
+
+В среда без графичен дисплей, например отдалечена SSH сесия, използвай:
+
+```bash
+python read_voltage.py --demo --no-plot
+```
 
 ## 2. Компилиране и стартиране на Wokwi
 
-1. Отвори цялата папка в VS Code.
-2. Изчакай PlatformIO да подготви средата.
-3. Натисни **PlatformIO: Build** (иконата с отметка в долната лента).
-4. Отвори `diagram.json`.
-5. Натисни зеления бутон за стартиране или изпълни
+Спазвай този ред: **компилиране → Wokwi → Python**. Без компилиран firmware
+Wokwi не може да стартира симулацията и RFC2217 сървъра на порт `4000`.
+
+1. Компилирай firmware-а от терминала:
+
+   ```bash
+   python -m platformio run
+   ```
+
+   Като алтернатива във VS Code използвай **PlatformIO: Build** — иконата с
+   отметка в долната лента.
+
+2. Провери, че са създадени файловете:
+
+   ```text
+   .pio/build/uno/firmware.hex
+   .pio/build/uno/firmware.elf
+   ```
+
+3. Отвори `diagram.json`.
+4. Натисни зеления бутон за стартиране или изпълни
    `F1` -> `Wokwi: Start Simulator`.
-6. Остави раздела на симулатора видим, за да не бъде поставена симулацията на
+5. Остави раздела на симулатора видим, за да не бъде поставена симулацията на
    пауза.
 
 `wokwi.toml` отваря виртуалния сериен порт като RFC2217 сървър на
@@ -88,8 +136,8 @@ python read_voltage.py --demo
 
 ## 3. Получаване на реалните данни в Python
 
-Докато Wokwi симулацията работи, отвори втори терминал, активирай Python
-средата и изпълни:
+Едва след като Wokwi симулацията работи, отвори втори терминал, активирай
+Python средата и изпълни:
 
 ```bash
 python read_voltage.py

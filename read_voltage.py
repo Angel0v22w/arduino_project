@@ -8,6 +8,7 @@ import csv
 from collections import deque
 from dataclasses import dataclass
 import math
+import os
 from pathlib import Path
 from queue import Empty, Queue
 import sys
@@ -206,11 +207,18 @@ def run_plot(
     """Visualize measurements and return a source error if one occurs."""
 
     try:
+        import matplotlib
+
+        # Prefer the PyQt6 backend installed by requirements.txt for GUI windows.
+        if not os.environ.get("MPLBACKEND"):
+            matplotlib.use("qtagg", force=True)
+
         import matplotlib.pyplot as plt
         from matplotlib.animation import FuncAnimation
     except ModuleNotFoundError as exc:
         return RuntimeError(
-            "Липсва matplotlib. Изпълни: python -m pip install -r requirements.txt"
+            "Липсва графична зависимост. Изпълни: "
+            "python -m pip install -r requirements.txt"
         )
 
     times: deque[float] = deque()
@@ -218,13 +226,20 @@ def run_plot(
     values_u2: deque[float] = deque()
     source_error: list[Exception] = []
 
-    figure, axis = plt.subplots()
+    try:
+        figure, axis = plt.subplots()
+    except (ImportError, RuntimeError) as exc:
+        return RuntimeError(
+            "Не може да се отвори графичен прозорец. Провери графичната сесия "
+            "или използвай --no-plot. "
+            f"Техническа причина: {exc}"
+        )
     (line_u1,) = axis.plot([], [], label="U1 (A0)", color="tab:green")
     (line_u2,) = axis.plot([], [], label="U2 (A1)", color="tab:blue")
     latest_text = axis.text(
         0.02, 0.96, "Очакване на данни…", transform=axis.transAxes, va="top"
     )
-    axis.set_title("Двусистемно измерване на напрежение")
+    axis.set_title("двуканално измерване на напрежение")
     axis.set_xlabel("Време, s")
     axis.set_ylabel("Напрежение, V")
     axis.set_xlim(0.0, window_s)
@@ -242,11 +257,18 @@ def run_plot(
                 break
 
             if item is END_OF_SOURCE:
+                # Do not close the figure during FuncAnimation's first draw.
+                # Closing here clears its timer before Matplotlib starts it.
                 if source_error:
-                    plt.close(figure)
+                    latest_text.set_text(
+                        "Грешка при източника:\n" + str(source_error[0])
+                    )
+                    latest_text.set_color("tab:red")
                 continue
             if isinstance(item, SourceFailure):
                 source_error.append(item.error)
+                latest_text.set_text("Грешка при източника:\n" + str(item.error))
+                latest_text.set_color("tab:red")
                 continue
             if not isinstance(item, VoltageSample):
                 continue
@@ -258,6 +280,7 @@ def run_plot(
             latest_text.set_text(
                 f"U1 = {item.u1_v:.3f} V\nU2 = {item.u2_v:.3f} V"
             )
+            latest_text.set_color("black")
 
         if times:
             newest = times[-1]
