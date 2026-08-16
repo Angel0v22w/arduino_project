@@ -24,23 +24,45 @@ VS Code ще предложи двете разширения автоматич
 При първото използване на Wokwi изпълни `F1` -> `Wokwi: Request a New License`
 и следвай показаните стъпки.
 
-## 1. Подготовка на Python
+## Клониране и първоначална настройка
 
 Linux/macOS:
 
 ```bash
+git clone https://github.com/Angel0v22w/arduino_project.git
+cd arduino_project
 python3 -m venv .venv
 source .venv/bin/activate
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
+code .
 ```
 
 Windows PowerShell:
 
 ```powershell
+git clone https://github.com/Angel0v22w/arduino_project.git
+Set-Location arduino_project
 py -m venv .venv
-.venv\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
+code .
 ```
+
+След клониране не е необходимо да се търсят или изтеглят игнорираните файлове:
+
+- `.venv/` се създава с командата `python -m venv`;
+- `.pio/`, включително необходимите на Wokwi `firmware.hex` и `firmware.elf`,
+  се създава при **PlatformIO: Build**;
+- `.platformio-core/` е локален кеш с компилатори и инструменти, които
+  PlatformIO изтегля автоматично при необходимост;
+- `__pycache__/` съдържа временни Python файлове;
+- `measurements*.csv` се създават само при запис на измервания;
+- `project_conv.txt` е работният разговор по разработката и не е необходим за
+  стартиране на проекта.
+
+## 1. Проверка на Python програмата
 
 Графиката може да се провери веднага, без микроконтролер:
 
@@ -131,4 +153,3 @@ python -m unittest discover -s tests -v
 Парсването, графиката и CSV записът могат да останат като основа. За реалната
 NI реализация са нужни точният модел на устройството, имената и типът на
 каналите, входният диапазон и желаната честота на дискретизация.
-
