@@ -1,0 +1,9 @@
+.pio/
+.platformio-core/
+.venv/
+.agents/
+.codex/
+__pycache__/
+*.py[cod]
+measurements*.csv
+project_conv.txt
